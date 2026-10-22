@@ -1,0 +1,13 @@
+{
+  "description": "AI Army Command \u2014 a self-hosted mission-control dashboard for commanding many AI models and chat apps from one place.",
+  "name": "ai-army",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix frontend run build && rm -rf backend/public && cp -r frontend/dist backend/public",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "start": "npm --prefix backend start"
+  },
+  "version": "1.0.0"
+}
