@@ -2,6 +2,18 @@ import { Router } from 'express';
 import { config } from '../config.js';
 import { listModels, streamChatCompletion } from '../services/openrouter.js';
 import { tileStore } from '../services/tileStore.js';
+import { providerSummary } from '../services/providers/index.js';
+import { agentStore } from '../services/agentStore.js';
+import { TOOL_DEFS } from '../services/tools.js';
+import {
+  dispatchMissions,
+  listMissions,
+  getMission,
+  cancelMission,
+  resolveApproval,
+  subscribe,
+  isTerminal,
+} from '../services/missions.js';
 
 const router = Router();
 
@@ -107,6 +119,127 @@ router.post('/ask', async (req, res) => {
     /* noop */
   }
   res.end();
+});
+
+// ---------------- Barracks: the subagent fleet ----------------
+
+// Providers & tools (what agents can be built from)
+router.get('/providers', (_req, res) => res.json({ providers: providerSummary() }));
+router.get('/tools', (_req, res) => res.json({ tools: TOOL_DEFS }));
+
+// Agent roster
+router.get('/agents', async (_req, res) => {
+  try {
+    res.json({ agents: await agentStore.list() });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+router.post('/agents', async (req, res) => {
+  try {
+    const agent = await agentStore.add(req.body || {});
+    res.status(201).json({ agent });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: String(e.message || e) });
+  }
+});
+
+router.put('/agents/:id', async (req, res) => {
+  try {
+    const agent = await agentStore.update(req.params.id, req.body || {});
+    res.json({ agent });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: String(e.message || e) });
+  }
+});
+
+router.delete('/agents/:id', async (req, res) => {
+  try {
+    await agentStore.remove(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: String(e.message || e) });
+  }
+});
+
+// Missions
+router.post('/missions', async (req, res) => {
+  try {
+    const missions = await dispatchMissions(req.body || {});
+    res.status(201).json({ missions });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: String(e.message || e) });
+  }
+});
+
+router.get('/missions', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const missions = await listMissions({ limit, activeOnly: req.query.active === 'true' });
+    res.json({ missions });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Live event stream for one mission. Replays the stored log, then stays open
+// for live events until the mission reaches a terminal status.
+router.get('/missions/:id/events', async (req, res) => {
+  let mission;
+  try {
+    mission = await getMission(req.params.id);
+  } catch (e) {
+    return res.status(e.status || 404).json({ error: String(e.message || e) });
+  }
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  const send = (obj) => {
+    try {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    } catch {
+      /* client went away */
+    }
+  };
+  for (const ev of mission.log) send(ev);
+  if (isTerminal(mission.status)) {
+    send({ type: 'mission_end', status: mission.status, replay: true });
+    return res.end();
+  }
+  const onEvent = (ev) => send(ev);
+  const off = subscribe(mission.id, onEvent);
+  req.on('close', () => off());
+});
+
+router.get('/missions/:id', async (req, res) => {
+  try {
+    res.json({ mission: await getMission(req.params.id) });
+  } catch (e) {
+    res.status(e.status || 404).json({ error: String(e.message || e) });
+  }
+});
+
+// Approve or deny a risky tool call the mission is paused on.
+router.post('/missions/:id/approvals/:callId', async (req, res) => {
+  try {
+    const mission = await resolveApproval(req.params.id, req.params.callId, req.body?.approved === true);
+    res.json({ mission });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: String(e.message || e) });
+  }
+});
+
+// Cancel a queued or running mission.
+router.delete('/missions/:id', async (req, res) => {
+  try {
+    const mission = await cancelMission(req.params.id);
+    res.json({ mission });
+  } catch (e) {
+    res.status(e.status || 404).json({ error: String(e.message || e) });
+  }
 });
 
 export default router;
