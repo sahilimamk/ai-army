@@ -2,6 +2,8 @@
 
 A self-hosted mission-control dashboard for your army of AI chatbots. One question, many models, live answer boxes — plus a launchpad for the big web chat apps. And now a **Barracks**: real subagents with tools that run multi-step missions.
 
+![War Room — ask once, watch the whole army answer](docs/screenshot-war-room.png)
+
 ```
 ai-army/
 ├── backend/            # Express API — keys live here, never in the browser
@@ -9,7 +11,6 @@ ai-army/
 │       ├── server.js          # app wiring, static frontend serving
 │       ├── config.js          # env parsing + startup safety warnings
 │       ├── middleware/
-│       │   ├── auth.js        # login gate (signed httpOnly cookie sessions)
 │       │   └── security.js    # helmet, CORS, rate limits
 │       ├── routes/
 │       │   └── api.js         # /api/* endpoints
