@@ -1,0 +1,10 @@
+services:
+  ai-army:
+    build: .
+    env_file: .env
+    ports:
+      - "3000:3000"
+    volumes:
+      # keep custom launchpad tiles across rebuilds
+      - ./backend/src/data:/app/backend/src/data
+    restart: unless-stopped
